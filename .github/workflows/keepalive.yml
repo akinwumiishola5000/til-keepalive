@@ -1,0 +1,42 @@
+name: Keep TIL apps awake
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"   # every 4 hours (UTC), at minute 17 to avoid peak queue
+  workflow_dispatch:          # lets you run it manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Visit and wake apps
+        run: python keepalive.py
+
+      # GitHub disables scheduled workflows after 60 days without repo activity.
+      # A tiny daily heartbeat commit in THIS repo prevents that.
+      - name: Heartbeat commit (once a day)
+        if: always()
+        run: |
+          if [ "$(date -u +%H)" -lt 4 ]; then
+            date -u > heartbeat.txt
+            git config user.name "til-keepalive-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add heartbeat.txt
+            git commit -m "heartbeat $(date -u +%F)" || echo "nothing to commit"
+            git push
+          fi
